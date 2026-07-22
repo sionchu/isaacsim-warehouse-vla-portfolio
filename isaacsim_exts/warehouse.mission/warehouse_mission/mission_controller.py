@@ -148,7 +148,11 @@ class MissionController:
     def _set_robot_position(self, point: Point) -> None:
         prim = self.stage.GetPrimAtPath(ROBOT_PATH)
         if prim.IsValid():
-            UsdGeom.XformCommonAPI(prim).SetTranslate(Gf.Vec3d(point.x, point.y, 0.0))
+            position = prim.GetAttribute("xformOp:translate:portfolio")
+            if position.IsValid():
+                position.Set(Gf.Vec3d(point.x, point.y, 0.0))
+            else:
+                UsdGeom.XformCommonAPI(prim).SetTranslate(Gf.Vec3d(point.x, point.y, 0.0))
 
     def _set_tray_height(self, lift_offset: float) -> None:
         for path, z in (

@@ -41,6 +41,7 @@ Its action head returns logits for ten discrete targets. The Isaac UI records in
 - VLA-lite training: CUDA, 5,000 samples, 35 epochs, synthetic validation accuracy 0.999
 - Isaac extension headless startup: passed, no Kit `[Error]` entries
 - Isaac mission smoke: manual B3 and automatic B1 completed
+- Recorded trial: manual C5 followed by learned automatic B1, 233 frames at 15 fps
 
 ## Next portfolio milestones
 

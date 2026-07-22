@@ -427,6 +427,9 @@ def Xform "World"
         prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd@
     )
     {
+        double3 xformOp:translate:portfolio = (-6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale", "xformOp:translate:portfolio"]
+
         def Xform "PortfolioLift"
         {
             def Cube "MastLeft"
@@ -476,4 +479,3 @@ def Xform "World"
         }
     }
 }
-

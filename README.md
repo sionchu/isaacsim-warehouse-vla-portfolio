@@ -56,6 +56,19 @@ For sensor visualization only:
 .\scripts\start_monitor.ps1
 ```
 
+Record the automated C5 manual mission followed by an automatic empty-slot mission:
+
+```powershell
+.\scripts\record_demo.ps1
+```
+
+The reproducible recording pipeline saves `recordings/warehouse_trial.mp4` and its thumbnail. It combines the Isaac render with mission state, route telemetry, and rack occupancy.
+Temporary PNG frames are removed after encoding; use `record_demo.ps1 -KeepFrames` only when frame-level debugging is needed.
+
+[Watch the recorded trial](recordings/warehouse_trial.mp4)
+
+![Warehouse VLA trial](recordings/warehouse_trial_thumbnail.png)
+
 The RViz dashboard contains `/map`, `/scan`, `/front_3d_lidar/lidar_points`, TF, and `/front_stereo_camera/left/image_raw` in one window. Camera and lidar data begin after Isaac simulation is playing.
 
 ## Train the local policy

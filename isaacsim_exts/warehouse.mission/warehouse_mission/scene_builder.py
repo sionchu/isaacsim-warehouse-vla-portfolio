@@ -98,11 +98,14 @@ def _build_rack(stage, rack: str, y: float, color) -> None:
 
 
 def _create_robot_and_lift(stage) -> None:
-    robot = stage.GetPrimAtPath(ROBOT_PATH)
-    if not robot.IsValid():
-        robot = stage.DefinePrim(ROBOT_PATH, "Xform")
-        robot.GetReferences().AddReference(NOVA_CARTER_ROS)
-    UsdGeom.XformCommonAPI(robot).SetTranslate(Gf.Vec3d(-6.0, 0.0, 0.0))
+    if stage.GetPrimAtPath(ROBOT_PATH).IsValid():
+        stage.RemovePrim(ROBOT_PATH)
+    robot = stage.DefinePrim(ROBOT_PATH, "Xform")
+    robot.GetReferences().AddReference(NOVA_CARTER_ROS)
+    position_op = UsdGeom.Xformable(robot).AddTranslateOp(
+        precision=UsdGeom.XformOp.PrecisionDouble, opSuffix="portfolio"
+    )
+    position_op.Set(Gf.Vec3d(-6.0, 0.0, 0.0))
 
     lift_root = f"{ROBOT_PATH}/PortfolioLift"
     stage.DefinePrim(lift_root, "Xform")
