@@ -44,53 +44,53 @@ class WarehouseMissionExtension(omni.ext.IExt):
     def _build_ui(self) -> None:
         with self._window.frame:
             with ui.VStack(spacing=8, height=0):
-                ui.Label("A \u2192 B/C 5\ub2e8 \uac04\ubc18 \uc790\ub3d9 \ubcf4\uad00", style={"font_size": 20})
+                ui.Label("A -> B/C Warehouse Storage", style={"font_size": 20})
                 ui.Label(
-                    "VLA-lite \ubaa9\ud45c \uc120\ud0dd + A*/Nav2 \uc548\uc804 \uc8fc\ud589",
+                    "VLA-lite target selection + A*/Nav2 navigation",
                     style={"color": 0xFF9AD7FF},
                 )
                 ui.Separator()
 
                 with ui.HStack(height=30):
-                    ui.Label("\uc2e4\ud589 \ubaa8\ub4dc", width=90)
+                    ui.Label("Run mode", width=90)
                     self._engine_combo = ui.ComboBox(0, "Visual A*", "ROS2 Nav2")
                 with ui.HStack(height=30):
-                    ui.Label("\ubaa9\uc801\uc9c0", width=90)
+                    ui.Label("Rack", width=90)
                     self._rack_combo = ui.ComboBox(0, "B", "C")
                 with ui.HStack(height=30):
-                    ui.Label("\uce35", width=90)
-                    self._level_combo = ui.ComboBox(0, "1\uce35", "2\uce35", "3\uce35", "4\uce35", "5\uce35")
+                    ui.Label("Level", width=90)
+                    self._level_combo = ui.ComboBox(0, "Level 1", "Level 2", "Level 3", "Level 4", "Level 5")
                 with ui.HStack(height=30):
-                    ui.Label("\uc5b8\uc5b4 \uba85\ub839", width=90)
+                    ui.Label("Instruction", width=90)
                     self._instruction = ui.StringField()
-                    self._instruction.model.set_value("\uc120\ud0dd\ud55c \uac04\ubc18\uc73c\ub85c \ubc15\uc2a4\ub97c \uc6b4\ubc18\ud574")
+                    self._instruction.model.set_value("Move the box to the selected rack")
 
                 with ui.HStack(height=34, spacing=6):
-                    ui.Button("\uc218\ub3d9 \ubaa9\uc801\uc9c0 \uc2e4\ud589", clicked_fn=self._manual_dispatch)
-                    ui.Button("\uc790\ub3d9 \ube48 \uc2ac\ub86f", clicked_fn=self._auto_dispatch)
+                    ui.Button("Run Selected Target", clicked_fn=self._manual_dispatch)
+                    ui.Button("Auto Free Slot", clicked_fn=self._auto_dispatch)
 
                 ui.Separator()
-                ui.Label("\uc2ac\ub86f \uc0c1\ud0dc")
+                ui.Label("Slot Occupancy")
                 self._occupancy_label = ui.Label(
                     "B1:EMPTY B2:EMPTY B3:EMPTY B4:EMPTY B5:EMPTY\n"
                     "C1:EMPTY C2:EMPTY C3:EMPTY C4:EMPTY C5:EMPTY"
                 )
 
                 with ui.HStack(height=34, spacing=6):
-                    ui.Button("\uc120\ud0dd \uc2ac\ub86f \ube44\uc6b0\uae30", clicked_fn=self._release_selected)
-                    ui.Button("\uc804\uccb4 \ucd08\uae30\ud654", clicked_fn=self._reset_storage)
+                    ui.Button("Clear Selected Slot", clicked_fn=self._release_selected)
+                    ui.Button("Reset All Slots", clicked_fn=self._reset_storage)
 
                 ui.Separator()
                 with ui.HStack(height=34, spacing=6):
-                    ui.Button("\uc7a5\uba74 \uc7ac\uc0dd\uc131", clicked_fn=self._create_scene)
-                    ui.Button("USD \uc800\uc7a5", clicked_fn=self._save_scene)
+                    ui.Button("Rebuild Scene", clicked_fn=self._create_scene)
+                    ui.Button("Save USD", clicked_fn=self._save_scene)
 
                 with ui.HStack(height=34, spacing=6):
                     ui.Button("Simulation Play", clicked_fn=self._play_simulation)
                     ui.Button("Simulation Pause", clicked_fn=self._pause_simulation)
 
-                self._policy_label = ui.Label("\uc815\ucc45: \ucd08\uae30\ud654 \uc911")
-                self._status_label = ui.Label("\ub300\uae30 \uc911", word_wrap=True)
+                self._policy_label = ui.Label("Policy: initializing")
+                self._status_label = ui.Label("Ready", word_wrap=True)
                 ui.Spacer(height=8)
                 ui.Label("Camera: /front_stereo_camera/left/image_raw", style={"color": 0xFFAAAAAA})
                 ui.Label("SLAM: /front_2d_lidar/scan", style={"color": 0xFFAAAAAA})
@@ -108,23 +108,23 @@ class WarehouseMissionExtension(omni.ext.IExt):
             PORTFOLIO_ROOT / "recordings" / "mission_events.jsonl",
             self._set_status,
         )
-        self._policy_label.text = f"\uc815\ucc45: {self._controller.policy.mode}"
+        self._policy_label.text = f"Policy: {self._controller.policy.mode}"
         self._refresh_occupancy()
-        self._set_status("\uc7a5\uba74 \uc0dd\uc131 \uc644\ub8cc | A \uad6c\uc5ed\uc5d0\uc11c \uc784\ubb34\ub97c \uc120\ud0dd\ud558\uc138\uc694")
+        self._set_status("Scene ready | Select a mission at loading zone A")
 
     def _save_scene(self) -> None:
         stage = omni.usd.get_context().get_stage()
         if stage is None:
-            self._set_status("\uc800\uc7a5\ud560 \uc7a5\uba74\uc774 \uc5c6\uc2b5\ub2c8\ub2e4")
+            self._set_status("No scene is available to save")
             return
         output = PORTFOLIO_ROOT / "scenes" / "warehouse_mission.usda"
         output.parent.mkdir(parents=True, exist_ok=True)
         stage.GetRootLayer().Export(str(output))
-        self._set_status(f"\uc800\uc7a5 \uc644\ub8cc: {output}")
+        self._set_status(f"Saved: {output}")
 
     def _play_simulation(self) -> None:
         omni.timeline.get_timeline_interface().play()
-        self._set_status("Simulation Play | ROS 2 \uc13c\uc11c \ucd9c\ub825 \ud65c\uc131\ud654")
+        self._set_status("Simulation Play | ROS 2 sensor output enabled")
 
     def _pause_simulation(self) -> None:
         omni.timeline.get_timeline_interface().pause()
@@ -137,7 +137,7 @@ class WarehouseMissionExtension(omni.ext.IExt):
         level = self._level_combo.model.get_item_value_model().as_int + 1
         slot = f"{rack}{level}"
         instruction = self._instruction.model.as_string or (
-            f"{rack} \uad6c\uc5ed {level}\uce35\uc5d0 \ubc15\uc2a4\ub97c \ubcf4\uad00\ud574"
+            f"Store the box at rack {rack}, level {level}"
         )
         try:
             if self._uses_nav2():
@@ -153,14 +153,14 @@ class WarehouseMissionExtension(omni.ext.IExt):
     def _auto_dispatch(self) -> None:
         if not self._require_controller():
             return
-        instruction = self._instruction.model.as_string or "\ube44\uc5b4 \uc788\ub294 \uac04\ubc18\uc5d0 \uc790\ub3d9 \ubcf4\uad00\ud574"
+        instruction = self._instruction.model.as_string or "Store the box in an available slot"
         try:
             if self._uses_nav2():
                 decision = self._controller.policy.choose(instruction, self._controller.occupancy)
                 self._dispatch_ros(decision)
             else:
                 decision = self._controller.start(instruction)
-                self._set_status(f"VLA \uacb0\uc815: {decision.slot_id} | {decision.source}")
+                self._set_status(f"VLA decision: {decision.slot_id} | {decision.source}")
         except Exception as error:
             self._set_status(str(error))
 
@@ -179,7 +179,7 @@ class WarehouseMissionExtension(omni.ext.IExt):
 
     def _require_controller(self) -> bool:
         if self._controller is None:
-            self._set_status("\uba3c\uc800 \uc7a5\uba74\uc744 \uc0dd\uc131\ud558\uc138\uc694")
+            self._set_status("Create the scene first")
             return False
         return True
 
@@ -216,7 +216,7 @@ class WarehouseMissionExtension(omni.ext.IExt):
         )
         self._pending_ros_decision = decision
         self._pending_ros_started_at = time.time()
-        self._set_status(f"Nav2 \uc694\uccad \uc804\uc1a1 | {decision.slot_id} | {decision.source}")
+        self._set_status(f"Nav2 request sent | {decision.slot_id} | {decision.source}")
 
     def _on_ros_status(self, payload: dict) -> None:
         status = str(payload.get("status", "UNKNOWN"))

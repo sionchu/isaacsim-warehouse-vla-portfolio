@@ -52,7 +52,7 @@ class MissionController:
         self._show_active_cargo(True)
         self._draw_route(self.route)
         self._notify(
-            f"{decision.slot_id} \uc774\ub3d9 \uc911 | {decision.source} | confidence {decision.confidence:.2f}"
+            f"Navigating to {decision.slot_id} | {decision.source} | confidence {decision.confidence:.2f}"
         )
         return decision
 
@@ -64,7 +64,7 @@ class MissionController:
             if self._advance_route(dt):
                 self.state = "LIFTING"
                 self.phase_elapsed = 0.0
-                self._notify(f"{self.active_decision.slot_id} \ub3c4\ucc29 | \ub9ac\ud504\ud2b8 \uc0c1\uc2b9")
+                self._notify(f"Arrived at {self.active_decision.slot_id} | Raising lift")
         elif self.state == "LIFTING":
             level = int(self.active_decision.slot_id[1:])
             target_height = SHELF_HEIGHTS[level] - SHELF_HEIGHTS[1]
@@ -74,7 +74,7 @@ class MissionController:
                 self._deposit_box()
                 self.state = "LOWERING"
                 self.phase_elapsed = 0.0
-                self._notify(f"{self.active_decision.slot_id} \uc801\uc7ac \uc644\ub8cc | \ub9ac\ud504\ud2b8 \ud558\uac15")
+                self._notify(f"Stored at {self.active_decision.slot_id} | Lowering lift")
         elif self.state == "LOWERING":
             level = int(self.active_decision.slot_id[1:])
             start_height = SHELF_HEIGHTS[level] - SHELF_HEIGHTS[1]
@@ -95,7 +95,7 @@ class MissionController:
         path = f"{SCENE_ROOT}/StoredBoxes/{slot_id}"
         if self.stage.GetPrimAtPath(path).IsValid():
             self.stage.RemovePrim(path)
-        self._notify(f"{slot_id} \uc2ac\ub86f \ube44\uc6c0")
+        self._notify(f"Cleared slot {slot_id}")
 
     def reset_storage(self) -> None:
         for slot in SLOT_IDS:
@@ -103,7 +103,7 @@ class MissionController:
             path = f"{SCENE_ROOT}/StoredBoxes/{slot}"
             if self.stage.GetPrimAtPath(path).IsValid():
                 self.stage.RemovePrim(path)
-        self._notify("\ubaa8\ub4e0 \uc2ac\ub86f \ucd08\uae30\ud654")
+        self._notify("Reset all slots")
 
     def complete_external(self, decision: SlotDecision, elapsed: float = 0.0) -> None:
         """Reflect a completed Nav2 mission in the scene and mission log."""
@@ -114,7 +114,7 @@ class MissionController:
         self._log_event(decision, elapsed)
         self.active_decision = None
         self._show_active_cargo(True)
-        self._notify(f"Nav2 \uc784\ubb34 \uc644\ub8cc | {decision.slot_id}")
+        self._notify(f"Nav2 mission complete | {decision.slot_id}")
 
     def occupancy_text(self) -> str:
         rows = []
@@ -194,7 +194,7 @@ class MissionController:
         self._set_tray_height(0.0)
         self._show_active_cargo(True)
         self._clear_route()
-        self._notify(f"\uc784\ubb34 \uc644\ub8cc | {decision.slot_id} | {elapsed:.1f}s")
+        self._notify(f"Mission complete | {decision.slot_id} | {elapsed:.1f}s")
 
     def _draw_route(self, route: list[Point]) -> None:
         self._clear_route()
