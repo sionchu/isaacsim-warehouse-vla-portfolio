@@ -1,0 +1,22 @@
+* text=auto
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.py text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Keep large binary robotics assets out of normal Git history.
+*.usd filter=lfs diff=lfs merge=lfs -text
+*.usdc filter=lfs diff=lfs merge=lfs -text
+*.usdz filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.stl filter=lfs diff=lfs merge=lfs -text
+*.dae filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+*.bag filter=lfs diff=lfs merge=lfs -text
+*.db3 filter=lfs diff=lfs merge=lfs -text
+*.mcap filter=lfs diff=lfs merge=lfs -text
+

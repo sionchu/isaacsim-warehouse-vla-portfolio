@@ -1,0 +1,13 @@
+{
+  "python.defaultInterpreterPath": "C:\\IsaacSim-ros_workspaces\\jazzy_ws\\.pixi\\envs\\default\\python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/ros2_ws/src/portfolio_bringup"
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "ros2_ws/build": true,
+    "ros2_ws/install": true,
+    "ros2_ws/log": true
+  }
+}
+

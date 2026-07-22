@@ -1,0 +1,9 @@
+{
+  "isaac_sim": "6.0.1",
+  "ros_distro": "jazzy",
+  "rmw_implementation": "rmw_zenoh_cpp",
+  "official_workspace_tag": "IsaacSim-6.0.1",
+  "official_workspace_path": "C:\\IsaacSim-ros_workspaces\\jazzy_ws",
+  "isaac_sim_path": "C:\\isaacsim"
+}
+

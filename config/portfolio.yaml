@@ -1,0 +1,6 @@
+portfolio_status:
+  ros__parameters:
+    project_name: "isaacsim_ros2_portfolio"
+    robot_name: "development_robot"
+    publish_rate_hz: 1.0
+

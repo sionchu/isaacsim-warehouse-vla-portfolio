@@ -1,0 +1,43 @@
+# ROS 2 / colcon output
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Pixi and Python caches
+.pixi/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Isaac Sim and Omniverse generated data
+.cache/
+cache/
+logs/
+outputs/
+screenshots/
+
+# Large local-only captures and datasets
+data/
+datasets/
+recordings/raw/
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# IDE and operating system noise
+.vs/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local secrets and overrides
+.env
+.env.*
+!.env.example
+config/local.*
+

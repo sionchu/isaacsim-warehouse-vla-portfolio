@@ -1,0 +1,20 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff
+      - run: ruff check ros2_ws/src/portfolio_bringup
+      - run: python -m compileall -q ros2_ws/src/portfolio_bringup
+

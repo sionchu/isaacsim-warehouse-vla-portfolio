@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build portfolio ROS 2 package",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\build.ps1"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Zenoh router",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\start_zenoh.ps1"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Isaac Sim",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\start_isaac_sim.ps1"],
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
+
