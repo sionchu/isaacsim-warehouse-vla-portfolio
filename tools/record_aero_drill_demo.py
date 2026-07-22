@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import traceback
+from pathlib import Path
+
+from isaacsim import SimulationApp
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Render the aerospace DRPE drilling trial.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--fps", type=int, default=15)
+    parser.add_argument("--preview", action="store_true")
+    return parser.parse_known_args()
+
+
+ARGS, ISAAC_ARGS = parse_args()
+sys.argv = [sys.argv[0], *ISAAC_ARGS]
+simulation_app = SimulationApp(
+    {"headless": True, "renderer": "RaytracedLighting", "width": 960, "height": 540}
+)
+
+import carb.settings  # noqa: E402
+import omni.replicator.core as rep  # noqa: E402
+import omni.usd  # noqa: E402
+from isaacsim.core.experimental.utils.stage import is_stage_loading  # noqa: E402
+from omni.replicator.core.functional import write_image  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "isaacsim_exts" / "aero.drill.vla"))
+
+from aero_drill_vla.mission_controller import AeroDrillMissionController  # noqa: E402
+from aero_drill_vla.scene_builder import build_scene  # noqa: E402
+
+
+def prepare_output(output_dir: Path) -> None:
+    output_dir = output_dir.resolve()
+    allowed_root = (ROOT / "recordings" / "raw").resolve()
+    if output_dir != allowed_root and allowed_root not in output_dir.parents:
+        raise RuntimeError(f"Raw capture must stay below {allowed_root}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for old_frame in output_dir.glob("frame_*.png"):
+        old_frame.unlink()
+    telemetry = output_dir / "telemetry.json"
+    if telemetry.exists():
+        telemetry.unlink()
+
+
+def wait_for_stage() -> None:
+    simulation_app.update()
+    simulation_app.update()
+    while is_stage_loading():
+        simulation_app.update()
+    for _ in range(10):
+        simulation_app.update()
+
+
+def snapshot(controller: AeroDrillMissionController, status: str) -> dict:
+    active = controller.active_hole
+    frame = controller.frames.get(active)
+    return {
+        "state": controller.state,
+        "status": status,
+        "active_hole": active,
+        "strategy": controller.active_strategy,
+        "completed": dict(controller.completed),
+        "completed_count": controller.completed_count,
+        "force_n": controller.current_force_n,
+        "spindle_rpm": controller.spindle_rpm,
+        "feed_mm_s": controller.feed_mm_s,
+        "quality": controller.last_quality,
+        "policy": controller.policy.mode,
+        "position_error_mm": frame.position_error_mm if frame else 0.0,
+        "normal_error_deg": frame.normal_error_deg if frame else 0.0,
+        "material_stack": frame.material_stack if frame else "--",
+    }
+
+
+def cleanup(rgb, render_product) -> None:
+    rep.orchestrator.wait_until_complete()
+    rgb.detach()
+    render_product.destroy()
+
+
+def record() -> None:
+    output_dir = ARGS.output_dir.resolve()
+    prepare_output(output_dir)
+    omni.usd.get_context().new_stage()
+    stage = omni.usd.get_context().get_stage()
+    build_scene(stage, ROOT / "scenes" / "aero_drill_vla.usda")
+    wait_for_stage()
+
+    latest_status = {"text": "System ready"}
+
+    def status_callback(message: str) -> None:
+        latest_status["text"] = message
+
+    controller = AeroDrillMissionController(
+        stage,
+        ROOT / "models" / "aero_drill_vla.pt",
+        ROOT / "recordings" / "aero_drill_demo_events.jsonl",
+        status_callback,
+    )
+    controller.cycle_speed = 5.0
+
+    rep.orchestrator.set_capture_on_play(False)
+    carb.settings.get_settings().set("rtx/post/dlss/execMode", 2)
+    camera = rep.functional.create.camera(
+        position=(-3.05, -3.10, 2.55),
+        look_at=(0.10, 0.0, 0.95),
+        focal_length=25.0,
+        clipping_range=(0.1, 1000.0),
+        parent="/World",
+        name="AeroDrillRecordingCamera",
+    )
+    render_product = rep.create.render_product(camera, (960, 540), name="AeroDrillTrialRender")
+    rgb = rep.annotators.get("rgb")
+    rgb.attach(render_product)
+    rep.orchestrator.step(rt_subframes=6)
+
+    if ARGS.preview:
+        write_image(path=str(output_dir / "frame_0000.png"), data=rgb.get_data())
+        (output_dir / "telemetry.json").write_text(
+            json.dumps([snapshot(controller, latest_status["text"])], indent=2), encoding="utf-8"
+        )
+        print(f"preview={output_dir / 'frame_0000.png'}", flush=True)
+        cleanup(rgb, render_product)
+        return
+
+    telemetry = []
+    max_frames = 300
+    postroll_frame = None
+    for frame_index in range(max_frames):
+        if frame_index == 10:
+            controller.start_sequence("process the next pending DRPE hole")
+        controller.update(1.0 / ARGS.fps)
+        rep.orchestrator.step(rt_subframes=1)
+        frame_path = output_dir / f"frame_{frame_index:04d}.png"
+        write_image(path=str(frame_path), data=rgb.get_data())
+        telemetry.append(snapshot(controller, latest_status["text"]))
+        if frame_index % ARGS.fps == 0:
+            print(
+                f"capture frame={frame_index:03d} state={controller.state} "
+                f"hole={controller.active_hole} complete={controller.completed_count}/10",
+                flush=True,
+            )
+        if controller.completed_count == 10 and controller.state == "IDLE":
+            postroll_frame = postroll_frame or frame_index
+            if frame_index - postroll_frame >= 22:
+                break
+
+    (output_dir / "telemetry.json").write_text(
+        json.dumps(telemetry, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"frames={len(telemetry)}", flush=True)
+    cleanup(rgb, render_product)
+
+
+try:
+    record()
+except Exception:
+    error_text = traceback.format_exc()
+    print(error_text, flush=True)
+    error_path = ROOT / "recordings" / "raw" / "aero_drill_error.txt"
+    error_path.parent.mkdir(parents=True, exist_ok=True)
+    error_path.write_text(error_text, encoding="utf-8")
+    raise
+finally:
+    simulation_app.close()

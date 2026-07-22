@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import omni.ext
+import omni.kit.app
+import omni.timeline
+import omni.ui as ui
+import omni.usd
+
+from .hole_policy import HOLE_IDS
+from .mission_controller import AeroDrillMissionController
+from .scene_builder import build_scene, set_centerlines_visible
+
+PORTFOLIO_ROOT = Path(__file__).resolve().parents[3]
+
+
+class AeroDrillVLAExtension(omni.ext.IExt):
+    def on_startup(self, ext_id: str) -> None:
+        self._ext_id = ext_id
+        self._window = ui.Window("Aero Drill VLA Control", width=480, height=710)
+        self._controller: AeroDrillMissionController | None = None
+        self._centerlines_visible = True
+        self._update_subscription = (
+            omni.kit.app.get_app()
+            .get_update_event_stream()
+            .create_subscription_to_pop(self._on_update, name="aero_drill_vla_update")
+        )
+        self._build_ui()
+        self._create_scene()
+
+    def on_shutdown(self) -> None:
+        self._update_subscription = None
+        self._controller = None
+        self._window = None
+
+    def _build_ui(self) -> None:
+        with self._window.frame:
+            with ui.ScrollingFrame():
+                with ui.VStack(spacing=8, height=0):
+                    ui.Label("AEROSPACE DRILLING VLA", style={"font_size": 22})
+                    ui.Label(
+                        "DRPE bushing docking | R-eVo-inspired tool",
+                        style={"color": 0xFF7FE6F3},
+                    )
+                    ui.Label(
+                        "Synthetic portfolio cell - not OEM geometry",
+                        style={"color": 0xFF9AA7B4},
+                    )
+                    ui.Separator()
+
+                    with ui.HStack(height=30):
+                        ui.Label("Selected hole", width=115)
+                        self._hole_combo = ui.ComboBox(0, *HOLE_IDS)
+                    with ui.HStack(height=30):
+                        ui.Label("Instruction", width=115)
+                        self._instruction = ui.StringField()
+                        self._instruction.model.set_value("process the next pending DRPE hole")
+
+                    with ui.HStack(height=36, spacing=6):
+                        ui.Button("Run Selected Hole", clicked_fn=self._run_selected)
+                        ui.Button("Run H01-H10 Batch", clicked_fn=self._run_sequence)
+                    with ui.HStack(height=36, spacing=6):
+                        ui.Button("Pause / Resume", clicked_fn=self._pause_task)
+                        ui.Button("Reset Batch", clicked_fn=self._reset_batch)
+
+                    ui.Separator()
+                    ui.Label("HOLE QUALITY MAP")
+                    self._hole_status_label = ui.Label("", word_wrap=True)
+
+                    ui.Separator()
+                    ui.Label("LIVE PROCESS TELEMETRY")
+                    self._active_label = ui.Label("Active hole: --")
+                    self._state_label = ui.Label("State: IDLE")
+                    self._strategy_label = ui.Label("Strategy: --")
+                    self._force_label = ui.Label("Axial force: 0.0 N")
+                    self._spindle_label = ui.Label("Spindle: 0 rpm | Feed: 0.0 mm/s")
+                    self._quality_label = ui.Label("Last quality: --")
+                    self._progress_label = ui.Label("Batch progress: 0 / 10")
+
+                    ui.Separator()
+                    with ui.HStack(height=36, spacing=6):
+                        ui.Button("Toggle Centerlines", clicked_fn=self._toggle_centerlines)
+                        ui.Button("Rebuild Scene", clicked_fn=self._create_scene)
+                        ui.Button("Save USD", clicked_fn=self._save_scene)
+                    with ui.HStack(height=36, spacing=6):
+                        ui.Button("Simulation Play", clicked_fn=self._play_simulation)
+                        ui.Button("Simulation Pause", clicked_fn=self._pause_simulation)
+
+                    self._policy_label = ui.Label("Policy: initializing")
+                    self._status_label = ui.Label("Ready", word_wrap=True)
+                    ui.Spacer(height=8)
+                    ui.Label("Task policy: language + 10-hole visual state", style={"color": 0xFF9AA7B4})
+                    ui.Label("Safety gate: Direct / Vision Refine / Spiral", style={"color": 0xFF9AA7B4})
+                    ui.Label("Log: recordings/aero_drill_events.jsonl", style={"color": 0xFF9AA7B4})
+
+    def _create_scene(self) -> None:
+        context = omni.usd.get_context()
+        context.new_stage()
+        stage = context.get_stage()
+        output = PORTFOLIO_ROOT / "scenes" / "aero_drill_vla.usda"
+        build_scene(stage, output)
+        self._controller = AeroDrillMissionController(
+            stage,
+            PORTFOLIO_ROOT / "models" / "aero_drill_vla.pt",
+            PORTFOLIO_ROOT / "recordings" / "aero_drill_events.jsonl",
+            self._set_status,
+        )
+        self._centerlines_visible = True
+        self._policy_label.text = f"Policy: {self._controller.policy.mode}"
+        self._refresh_ui()
+        self._set_status("Scene ready | Select one hole or run the ten-hole batch")
+
+    def _run_selected(self) -> None:
+        if not self._require_controller():
+            return
+        hole = HOLE_IDS[self._hole_combo.model.get_item_value_model().as_int]
+        instruction = self._instruction.model.as_string or f"process {hole}"
+        try:
+            decision = self._controller.start_selected(hole, instruction)
+            self._set_status(
+                f"VLA decision: {decision.hole_id} | {decision.strategy} | {decision.source}"
+            )
+        except Exception as error:
+            self._set_status(str(error))
+
+    def _run_sequence(self) -> None:
+        if not self._require_controller():
+            return
+        instruction = self._instruction.model.as_string or "process all pending DRPE holes in sequence"
+        try:
+            decision = self._controller.start_sequence(instruction)
+            self._set_status(
+                f"Batch started: {decision.hole_id} | {decision.strategy} | {decision.source}"
+            )
+        except Exception as error:
+            self._set_status(str(error))
+
+    def _pause_task(self) -> None:
+        if self._require_controller():
+            self._controller.pause()
+
+    def _reset_batch(self) -> None:
+        if self._require_controller():
+            self._controller.reset()
+            self._refresh_ui()
+
+    def _toggle_centerlines(self) -> None:
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            return
+        self._centerlines_visible = not self._centerlines_visible
+        set_centerlines_visible(stage, self._centerlines_visible)
+        self._set_status(
+            f"Centerline visualization {'enabled' if self._centerlines_visible else 'hidden'}"
+        )
+
+    def _save_scene(self) -> None:
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            self._set_status("No scene is available to save")
+            return
+        output = PORTFOLIO_ROOT / "scenes" / "aero_drill_vla.usda"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        stage.GetRootLayer().Export(str(output))
+        self._set_status(f"Saved: {output}")
+
+    def _play_simulation(self) -> None:
+        omni.timeline.get_timeline_interface().play()
+        self._set_status("Simulation Play")
+
+    def _pause_simulation(self) -> None:
+        omni.timeline.get_timeline_interface().pause()
+        self._set_status("Simulation Pause")
+
+    def _on_update(self, event) -> None:
+        if self._controller is None:
+            return
+        dt = float(event.payload.get("dt", 1.0 / 60.0)) if event.payload else 1.0 / 60.0
+        self._controller.update(dt)
+        self._refresh_ui()
+
+    def _refresh_ui(self) -> None:
+        controller = self._controller
+        if controller is None:
+            return
+        cells = []
+        for index, hole in enumerate(HOLE_IDS):
+            marker = "PASS" if controller.completed[hole] else "WAIT"
+            if hole == controller.active_hole:
+                marker = "RUN"
+            cells.append(f"{hole}:{marker}")
+        self._hole_status_label.text = "  ".join(cells[:5]) + "\n" + "  ".join(cells[5:])
+        self._active_label.text = f"Active hole: {controller.active_hole}"
+        self._state_label.text = f"State: {controller.state}{' (PAUSED)' if controller.paused else ''}"
+        self._strategy_label.text = f"Strategy: {controller.active_strategy}"
+        self._force_label.text = f"Axial force: {controller.current_force_n:.1f} N"
+        self._spindle_label.text = (
+            f"Spindle: {controller.spindle_rpm} rpm | Feed: {controller.feed_mm_s:.1f} mm/s"
+        )
+        self._quality_label.text = (
+            f"Last quality: {controller.last_quality:.1f}% | {controller.last_cycle_seconds:.1f}s"
+            if controller.last_quality
+            else "Last quality: --"
+        )
+        self._progress_label.text = f"Batch progress: {controller.completed_count} / 10"
+
+    def _set_status(self, message: str) -> None:
+        if self._status_label:
+            self._status_label.text = message
+
+    def _require_controller(self) -> bool:
+        if self._controller is None:
+            self._set_status("Create the scene first")
+            return False
+        return True
