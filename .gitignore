@@ -22,6 +22,10 @@ screenshots/
 data/
 datasets/
 recordings/raw/
+recordings/*.log
+recordings/*.jsonl
+ml/data/
+ml/runs/
 *.zip
 *.7z
 *.tar
@@ -40,4 +44,3 @@ desktop.ini
 .env.*
 !.env.example
 config/local.*
-

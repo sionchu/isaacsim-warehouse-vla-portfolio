@@ -1,0 +1,21 @@
+[core]
+reloadable = true
+order = 0
+
+[package]
+version = "0.1.0"
+category = "Robotics"
+title = "Warehouse Mission Control"
+description = "A/B/C five-level kanban storage scenario with a VLA-lite mission policy."
+authors = ["Jeongeon Lee"]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.usd" = {}
+"omni.timeline" = {}
+"isaacsim.core.api" = {}
+"isaacsim.ros2.bridge" = {}
+"isaacsim.sensors.rtx" = {}
+
+[[python.module]]
+name = "warehouse_mission"
