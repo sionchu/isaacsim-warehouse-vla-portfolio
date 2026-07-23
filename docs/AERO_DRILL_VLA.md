@@ -133,18 +133,63 @@ Use:
 - `Toggle Frames` for B/TCP/hole/link coordinate frames.
 - `Toggle Colliders` for physics collision visualization.
 
+### ROS 2 command and feedback
+
+The `aero.drill.vla` extension contains an `rclpy` node named
+`aero_drill_isaac_bridge`. It uses the bundled Isaac Sim Jazzy libraries and
+Fast DDS on Windows. A separate `portfolio_bringup/aero_drill_terminal` process
+provides the external command and monitoring side.
+
+| Topic | ROS type | Isaac direction | Content |
+| --- | --- | --- | --- |
+| `/aero_drill/mission_request` | `std_msgs/msg/String` | subscribe | JSON mission action, hole, instruction, and source |
+| `/aero_drill/command_ack` | `std_msgs/msg/String` | publish | acceptance, action, hole, and diagnostic message |
+| `/aero_drill/status` | `std_msgs/msg/String` | publish | state, hole, strategy, progress, TCP error, clearance, force, RPM, and quality |
+| `/aero_drill/joint_states` | `sensor_msgs/msg/JointState` | publish | six UR10e names, positions, and velocities |
+| `/aero_drill/tcp_pose` | `geometry_msgs/msg/PoseStamped` | publish | TCP XYZ and quaternion in `world` |
+
+Start the two processes in separate PowerShell windows:
+
+```powershell
+# Terminal 1
+.\scripts\start_aero_drill_ros.ps1
+
+# Terminal 2
+.\scripts\aero_drill_terminal.ps1 -Action hole -Hole H01
+```
+
+The external node waits until `/aero_drill/status` reports both
+`robot_ready=true` and `state=IDLE`. It then publishes `RUN_HOLE`, verifies the
+ACK, prints each process-state transition, samples J1-J6 and TCP, and exits only
+after the completed mission returns to `IDLE`.
+
+Other supported terminal modes:
+
+```powershell
+.\scripts\aero_drill_terminal.ps1 -Action batch
+.\scripts\aero_drill_terminal.ps1 -Action monitor
+```
+
 Record a compact validated clip or the full batch:
 
 ```powershell
 .\scripts\record_aero_drill.ps1 -MaxHoles 1
 .\scripts\record_aero_drill.ps1 -MaxHoles 10
+.\scripts\record_aero_drill_ros.ps1 -Hole H01
 ```
 
 Outputs:
 
 - `recordings/aero_drill_trial.mp4`
 - `recordings/aero_drill_trial_thumbnail.png`
+- `recordings/aero_drill_ros_full.mp4`
+- `recordings/aero_drill_ros_full_thumbnail.png`
 - `recordings/aero_drill_events.jsonl` during interactive execution
+
+The validated ROS recording contains one real DDS command, an accepted ACK,
+240 published feedback messages, and the complete state chain:
+
+`IDLE -> APPROACH -> ALIGN -> DOCK -> CLAMP -> DRILL -> VERIFY -> RETRACT -> IDLE`.
 
 ## Verification
 

@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--max-holes", type=int, default=3)
     parser.add_argument("--preview", action="store_true")
+    parser.add_argument("--ros", action="store_true")
     return parser.parse_known_args()
 
 
@@ -37,12 +38,23 @@ from omni.replicator.core.functional import write_image  # noqa: E402
 omni.kit.app.get_app().get_extension_manager().set_extension_enabled_immediate(
     "isaacsim.robot_motion.cumotion", True
 )
+if ARGS.ros:
+    carb.settings.get_settings().set_bool(
+        "/exts/isaacsim.ros2.bridge/internal_lib_fallback",
+        True,
+    )
+    omni.kit.app.get_app().get_extension_manager().set_extension_enabled_immediate(
+        "isaacsim.ros2.bridge", True
+    )
+    for _ in range(8):
+        simulation_app.update()
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "isaacsim_exts" / "aero.drill.vla"))
 
 from aero_drill_vla.mission_controller import AeroDrillMissionController  # noqa: E402
 from aero_drill_vla.hole_policy import HOLE_IDS  # noqa: E402
+from aero_drill_vla.ros_bridge import AeroDrillRosBridge  # noqa: E402
 from aero_drill_vla.scene_builder import build_scene  # noqa: E402
 
 
@@ -68,7 +80,11 @@ def wait_for_stage() -> None:
         simulation_app.update()
 
 
-def snapshot(controller: AeroDrillMissionController, status: str) -> dict:
+def snapshot(
+    controller: AeroDrillMissionController,
+    status: str,
+    ros_bridge: AeroDrillRosBridge | None = None,
+) -> dict:
     active = controller.active_hole
     frame = controller.frames.get(active)
     return {
@@ -92,6 +108,10 @@ def snapshot(controller: AeroDrillMissionController, status: str) -> dict:
         "collision": controller.collision_summary,
         "tcp_pose": controller.tcp_pose_text,
         "joints": controller.joint_rows(),
+        "ros_enabled": bool(ros_bridge and ros_bridge.available),
+        "ros_command_count": ros_bridge.command_count if ros_bridge else 0,
+        "ros_publish_count": ros_bridge.publish_count if ros_bridge else 0,
+        "ros_terminal": list(ros_bridge.events) if ros_bridge else [],
     }
 
 
@@ -123,7 +143,7 @@ def record() -> None:
         error_path.unlink()
     omni.usd.get_context().new_stage()
     stage = omni.usd.get_context().get_stage()
-    build_scene(stage, ROOT / "scenes" / "aero_drill_vla.usda")
+    build_scene(stage)
     wait_for_stage()
 
     rep.orchestrator.set_capture_on_play(False)
@@ -154,9 +174,61 @@ def record() -> None:
         status_callback,
     )
     controller.cycle_speed = 1.6
+    ros_bridge = None
+
+    def ros_command(payload: dict) -> dict:
+        action = str(payload.get("action", "")).upper()
+        instruction = str(payload.get("instruction", "")).strip()
+        try:
+            if action == "RUN_HOLE":
+                hole = str(payload.get("hole", "")).upper()
+                if hole not in HOLE_IDS:
+                    raise ValueError(f"unknown hole: {hole}")
+                decision = controller.start_selected(
+                    hole,
+                    instruction or f"ROS 2 command: process {hole}",
+                )
+                message = f"mission started: {decision.hole_id} {decision.strategy}"
+            elif action == "RUN_BATCH":
+                decision = controller.start_sequence(
+                    instruction or "ROS 2 command: process H01-H10"
+                )
+                message = f"batch started: {decision.hole_id}"
+            elif action == "PAUSE":
+                controller.pause()
+                message = f"pause toggled: {controller.paused}"
+            elif action == "RESET":
+                controller.reset()
+                message = "batch reset"
+            elif action == "PING":
+                message = "bridge online"
+            else:
+                raise ValueError(f"unsupported action: {action}")
+            latest_status["text"] = f"ROS 2 {message}"
+            return {
+                "accepted": True,
+                "action": action,
+                "hole": str(payload.get("hole", "--")).upper(),
+                "message": message,
+            }
+        except Exception as error:
+            latest_status["text"] = f"ROS 2 command rejected: {error}"
+            return {
+                "accepted": False,
+                "action": action,
+                "hole": str(payload.get("hole", "--")).upper(),
+                "message": str(error),
+            }
+
+    if ARGS.ros:
+        ros_bridge = AeroDrillRosBridge(ros_command)
+        if not ros_bridge.available:
+            raise RuntimeError(f"ROS 2 bridge unavailable: {ros_bridge.error}")
     app_utils.play()
     for _ in range(180):
         controller.update(1.0 / 60.0)
+        if ros_bridge:
+            ros_bridge.tick(1.0 / 60.0, controller, latest_status["text"])
         simulation_app.update()
         if controller.robot_ready:
             break
@@ -173,7 +245,11 @@ def record() -> None:
         frame_data = capture_rgb(rgb, subframes=4)
         write_image(path=str(output_dir / "frame_0000.png"), data=frame_data)
         (output_dir / "telemetry.json").write_text(
-            json.dumps([snapshot(controller, latest_status["text"])], indent=2), encoding="utf-8"
+            json.dumps(
+                [snapshot(controller, latest_status["text"], ros_bridge)],
+                indent=2,
+            ),
+            encoding="utf-8",
         )
         print(f"preview={output_dir / 'frame_0000.png'}", flush=True)
         cleanup(rgb, render_product)
@@ -183,10 +259,12 @@ def record() -> None:
     max_holes = min(max(int(ARGS.max_holes), 1), len(HOLE_IDS))
     selected_holes = list(HOLE_IDS[:max_holes])
     next_hole_index = 0
-    max_frames = 900
+    max_frames = max(300, max_holes * 180 + 120)
     postroll_frame = None
     for frame_index in range(max_frames):
         if (
+            not ARGS.ros
+            and
             frame_index >= 10
             and controller.state == "IDLE"
             and next_hole_index < len(selected_holes)
@@ -196,11 +274,13 @@ def record() -> None:
             next_hole_index += 1
         for _ in range(4):
             controller.update(1.0 / 60.0)
+            if ros_bridge:
+                ros_bridge.tick(1.0 / 60.0, controller, latest_status["text"])
             simulation_app.update()
         frame_data = capture_rgb(rgb, subframes=1)
         frame_path = output_dir / f"frame_{frame_index:04d}.png"
         write_image(path=str(frame_path), data=frame_data)
-        telemetry.append(snapshot(controller, latest_status["text"]))
+        telemetry.append(snapshot(controller, latest_status["text"], ros_bridge))
         if frame_index % ARGS.fps == 0:
             print(
                 f"capture frame={frame_index:03d} state={controller.state} "
@@ -217,6 +297,8 @@ def record() -> None:
     )
     print(f"frames={len(telemetry)}", flush=True)
     cleanup(rgb, render_product)
+    if ros_bridge:
+        ros_bridge.close()
 
 
 try:

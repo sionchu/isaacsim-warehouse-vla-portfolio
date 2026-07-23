@@ -11,6 +11,7 @@ import omni.usd
 
 from .hole_policy import HOLE_IDS
 from .mission_controller import AeroDrillMissionController
+from .ros_bridge import AeroDrillRosBridge
 from .scene_builder import (
     build_scene,
     set_centerlines_visible,
@@ -25,6 +26,8 @@ class AeroDrillVLAExtension(omni.ext.IExt):
         self._ext_id = ext_id
         self._window = ui.Window("Aero Drill VLA Control", width=580, height=920)
         self._controller: AeroDrillMissionController | None = None
+        self._ros_bridge: AeroDrillRosBridge | None = None
+        self._status_text = "Ready"
         self._centerlines_visible = True
         self._frames_visible = True
         self._colliders_visible = False
@@ -37,6 +40,9 @@ class AeroDrillVLAExtension(omni.ext.IExt):
         self._create_scene()
 
     def on_shutdown(self) -> None:
+        if self._ros_bridge is not None:
+            self._ros_bridge.close()
+        self._ros_bridge = None
         self._update_subscription = None
         self._controller = None
         self._window = None
@@ -77,6 +83,7 @@ class AeroDrillVLAExtension(omni.ext.IExt):
 
                     ui.Separator()
                     ui.Label("LIVE PROCESS TELEMETRY")
+                    self._ros_label = ui.Label("ROS 2: initializing", word_wrap=True)
                     self._active_label = ui.Label("Active hole: --")
                     self._state_label = ui.Label("State: IDLE")
                     self._strategy_label = ui.Label("Strategy: --")
@@ -136,11 +143,70 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             PORTFOLIO_ROOT / "recordings" / "aero_drill_events.jsonl",
             self._set_status,
         )
+        if self._ros_bridge is not None:
+            self._ros_bridge.close()
+        self._ros_bridge = AeroDrillRosBridge(self._on_ros_command)
         self._centerlines_visible = True
         self._frames_visible = True
         self._policy_label.text = f"Policy: {self._controller.policy.mode}"
         self._refresh_ui()
-        self._set_status("Scene ready | Press Run to start physics and initialize UR10e")
+        ros_state = (
+            "ROS 2 bridge ready"
+            if self._ros_bridge.available
+            else f"ROS 2 unavailable: {self._ros_bridge.error}"
+        )
+        self._set_status(f"Scene ready | {ros_state} | Press Run or publish a mission")
+
+    def _on_ros_command(self, payload: dict) -> dict:
+        if self._controller is None:
+            return {"accepted": False, "message": "controller is not ready"}
+        action = str(payload.get("action", "")).upper()
+        instruction = str(payload.get("instruction", "")).strip()
+        try:
+            if action == "RUN_HOLE":
+                hole = str(payload.get("hole", "")).upper()
+                if hole not in HOLE_IDS:
+                    raise ValueError(f"unknown hole: {hole}")
+                omni.timeline.get_timeline_interface().play()
+                decision = self._controller.start_selected(
+                    hole,
+                    instruction or f"ROS 2 command: process {hole}",
+                )
+                message = (
+                    f"ROS accepted: {decision.hole_id} | "
+                    f"{decision.strategy} | {decision.source}"
+                )
+            elif action == "RUN_BATCH":
+                omni.timeline.get_timeline_interface().play()
+                decision = self._controller.start_sequence(
+                    instruction or "ROS 2 command: process H01-H10 in sequence"
+                )
+                message = f"ROS batch accepted: starts {decision.hole_id}"
+            elif action == "PAUSE":
+                self._controller.pause()
+                message = f"ROS pause toggled: paused={self._controller.paused}"
+            elif action == "RESET":
+                self._controller.reset()
+                message = "ROS reset accepted"
+            elif action == "PING":
+                message = "ROS bridge online"
+            else:
+                raise ValueError(f"unsupported action: {action}")
+            self._set_status(message)
+            return {
+                "accepted": True,
+                "action": action,
+                "hole": str(payload.get("hole", "--")).upper(),
+                "message": message,
+            }
+        except Exception as error:
+            self._set_status(f"ROS command rejected: {error}")
+            return {
+                "accepted": False,
+                "action": action,
+                "hole": str(payload.get("hole", "--")).upper(),
+                "message": str(error),
+            }
 
     def _run_selected(self) -> None:
         if not self._require_controller():
@@ -232,6 +298,8 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             return
         dt = float(event.payload.get("dt", 1.0 / 60.0)) if event.payload else 1.0 / 60.0
         self._controller.update(dt)
+        if self._ros_bridge is not None:
+            self._ros_bridge.tick(dt, self._controller, self._status_text)
         self._refresh_ui()
 
     def _refresh_ui(self) -> None:
@@ -258,6 +326,16 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             else "Last quality: --"
         )
         self._progress_label.text = f"Batch progress: {controller.completed_count} / 10"
+        if self._ros_bridge is None:
+            self._ros_label.text = "ROS 2: unavailable"
+        elif self._ros_bridge.available:
+            self._ros_label.text = (
+                "ROS 2: CONNECTED | "
+                f"RX commands {self._ros_bridge.command_count} | "
+                f"TX messages {self._ros_bridge.publish_count}"
+            )
+        else:
+            self._ros_label.text = f"ROS 2: unavailable | {self._ros_bridge.error}"
         self._robot_mode_label.text = f"Robot: {controller.robot_mode}"
         self._tcp_pose_label.text = controller.tcp_pose_text
         self._ik_label.text = f"IK / TCP tracking error: {controller.tcp_error_mm:.1f} mm"
@@ -275,6 +353,7 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             )
 
     def _set_status(self, message: str) -> None:
+        self._status_text = message
         if self._status_label:
             self._status_label.text = message
 

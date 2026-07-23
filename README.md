@@ -40,6 +40,42 @@ Use `-MaxHoles 10` to record the complete batch; the checked-in short clip recor
 
 ![Aerospace drilling VLA trial](recordings/aero_drill_trial_thumbnail.png)
 
+### ROS 2 closed-loop control
+
+The aerospace cell also accepts missions from a separate ROS 2 Jazzy process and publishes live feedback:
+
+| Direction | Topic | Type | Purpose |
+| --- | --- | --- | --- |
+| ROS 2 to Isaac | `/aero_drill/mission_request` | `std_msgs/msg/String` | JSON `RUN_HOLE`, `RUN_BATCH`, `PAUSE`, or `RESET` command |
+| Isaac to ROS 2 | `/aero_drill/command_ack` | `std_msgs/msg/String` | Accepted/rejected command result |
+| Isaac to ROS 2 | `/aero_drill/status` | `std_msgs/msg/String` | Process state, active hole, progress, TCP error, force, and RPM |
+| Isaac to ROS 2 | `/aero_drill/joint_states` | `sensor_msgs/msg/JointState` | UR10e J1-J6 position and velocity |
+| Isaac to ROS 2 | `/aero_drill/tcp_pose` | `geometry_msgs/msg/PoseStamped` | TCP pose in the world frame |
+
+Run Isaac Sim in the first PowerShell window:
+
+```powershell
+.\scripts\start_aero_drill_ros.ps1
+```
+
+Dispatch and monitor a hole from the second window:
+
+```powershell
+.\scripts\aero_drill_terminal.ps1 -Action hole -Hole H03
+```
+
+Use `-Action batch` for H01-H10 or `-Action monitor` for receive-only monitoring. The terminal waits for `robot_ready`, publishes the command, prints ACK/state transitions, samples J1-J6 and TCP, and exits after the mission returns to `IDLE`.
+
+Record a reproducible ROS 2 command/feedback trial:
+
+```powershell
+.\scripts\record_aero_drill_ros.ps1 -Hole H01
+```
+
+[Watch the ROS 2 closed-loop drilling trial](recordings/aero_drill_ros_full.mp4)
+
+![ROS 2 closed-loop aerospace drilling](recordings/aero_drill_ros_full_thumbnail.png)
+
 The cell takes public functional inspiration from SETI-TEC R eVo, Broetje RACe, and Electroimpact ADU-Bot systems. It does not contain OEM CAD or claim affiliation with those manufacturers. The generic drilling-head geometry follows cuMotion forward kinematics at `tool0`; force/RPM/feed/quality values remain synthetic process telemetry. Material removal and cutting-force validation remain future work. See [aerospace drilling implementation notes](docs/AERO_DRILL_VLA.md).
 
 ## Warehouse demo architecture

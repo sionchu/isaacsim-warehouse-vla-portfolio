@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
 
 from isaacsim import SimulationApp
 
+ROS_LIB = r"C:\isaacsim\exts\isaacsim.ros2.core\jazzy\lib"
+os.environ["ROS_DISTRO"] = "jazzy"
+os.environ["RMW_IMPLEMENTATION"] = "rmw_fastrtps_cpp"
+if ROS_LIB.lower() not in os.environ.get("PATH", "").lower().split(";"):
+    os.environ["PATH"] = os.environ.get("PATH", "") + ";" + ROS_LIB
+
 simulation_app = SimulationApp({"headless": True})
 
+import carb.settings  # noqa: E402
 import omni.ext  # noqa: E402
 import omni.kit.app  # noqa: E402
 import omni.usd  # noqa: E402
@@ -19,6 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    carb.settings.get_settings().set_bool(
+        "/exts/isaacsim.ros2.bridge/internal_lib_fallback",
+        True,
+    )
     manager = omni.kit.app.get_app().get_extension_manager()
     extension_path = ROOT / "isaacsim_exts" / "aero.drill.vla"
     manager.add_path(str(extension_path), omni.ext.ExtensionPathType.DIRECT_PATH)
