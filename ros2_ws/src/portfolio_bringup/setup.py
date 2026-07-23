@@ -24,6 +24,7 @@ setup(
         "console_scripts": [
             "status_publisher = portfolio_bringup.status_publisher:main",
             "warehouse_dispatcher = portfolio_bringup.warehouse_dispatcher:main",
+            "aero_drill_terminal = portfolio_bringup.aero_drill_terminal:main",
         ],
     },
 )

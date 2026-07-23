@@ -1,0 +1,25 @@
+[core]
+reloadable = true
+order = 0
+
+[package]
+version = "0.3.0"
+category = "Robotics"
+title = "Aero Drill VLA Control"
+description = "UR10e DRPE drill-plate docking and aerospace drilling VLA portfolio cell."
+authors = ["Jeongeon Lee"]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.usd" = {}
+"omni.timeline" = {}
+"isaacsim.core.api" = {}
+"isaacsim.core.experimental.objects" = {}
+"isaacsim.core.experimental.prims" = {}
+"isaacsim.core.experimental.utils" = {}
+"isaacsim.robot_motion.cumotion" = {}
+"isaacsim.ros2.bridge" = {}
+"isaacsim.storage.native" = {}
+
+[[python.module]]
+name = "aero_drill_vla"
