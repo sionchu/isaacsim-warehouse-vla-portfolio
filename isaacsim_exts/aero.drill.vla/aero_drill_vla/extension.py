@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import carb.settings
 import omni.ext
 import omni.kit.app
 import omni.timeline
@@ -10,7 +11,11 @@ import omni.usd
 
 from .hole_policy import HOLE_IDS
 from .mission_controller import AeroDrillMissionController
-from .scene_builder import build_scene, set_centerlines_visible
+from .scene_builder import (
+    build_scene,
+    set_centerlines_visible,
+    set_frames_visible,
+)
 
 PORTFOLIO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -18,9 +23,11 @@ PORTFOLIO_ROOT = Path(__file__).resolve().parents[3]
 class AeroDrillVLAExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str) -> None:
         self._ext_id = ext_id
-        self._window = ui.Window("Aero Drill VLA Control", width=480, height=710)
+        self._window = ui.Window("Aero Drill VLA Control", width=580, height=920)
         self._controller: AeroDrillMissionController | None = None
         self._centerlines_visible = True
+        self._frames_visible = True
+        self._colliders_visible = False
         self._update_subscription = (
             omni.kit.app.get_app()
             .get_update_event_stream()
@@ -40,11 +47,11 @@ class AeroDrillVLAExtension(omni.ext.IExt):
                 with ui.VStack(spacing=8, height=0):
                     ui.Label("AEROSPACE DRILLING VLA", style={"font_size": 22})
                     ui.Label(
-                        "DRPE bushing docking | R-eVo-inspired tool",
+                        "Official UR10e | cuMotion RMPflow | DRPE docking",
                         style={"color": 0xFF7FE6F3},
                     )
                     ui.Label(
-                        "Synthetic portfolio cell - not OEM geometry",
+                        "Generic R-eVo-inspired tool - not OEM geometry",
                         style={"color": 0xFF9AA7B4},
                     )
                     ui.Separator()
@@ -79,8 +86,29 @@ class AeroDrillVLAExtension(omni.ext.IExt):
                     self._progress_label = ui.Label("Batch progress: 0 / 10")
 
                     ui.Separator()
+                    ui.Label("ROBOT / COORDINATE FRAMES")
+                    self._robot_mode_label = ui.Label("Robot: UR10e initializing", word_wrap=True)
+                    self._frame_label = ui.Label(
+                        "Frames: W = B | TCP Z+ = drilling direction | Hole Z+ = outward",
+                        word_wrap=True,
+                    )
+                    self._tcp_pose_label = ui.Label("TCP W: --", word_wrap=True)
+                    self._ik_label = ui.Label("IK error: --")
+                    self._collision_label = ui.Label("Collision: waiting", word_wrap=True)
+
+                    ui.Separator()
+                    ui.Label("UR10e SIX-AXIS JOINT STATE")
+                    self._joint_labels = []
+                    for index in range(6):
+                        label = ui.Label(f"J{index + 1}: waiting", style={"font_size": 13})
+                        self._joint_labels.append(label)
+
+                    ui.Separator()
                     with ui.HStack(height=36, spacing=6):
                         ui.Button("Toggle Centerlines", clicked_fn=self._toggle_centerlines)
+                        ui.Button("Toggle Frames", clicked_fn=self._toggle_frames)
+                        ui.Button("Toggle Colliders", clicked_fn=self._toggle_colliders)
+                    with ui.HStack(height=36, spacing=6):
                         ui.Button("Rebuild Scene", clicked_fn=self._create_scene)
                         ui.Button("Save USD", clicked_fn=self._save_scene)
                     with ui.HStack(height=36, spacing=6):
@@ -91,10 +119,12 @@ class AeroDrillVLAExtension(omni.ext.IExt):
                     self._status_label = ui.Label("Ready", word_wrap=True)
                     ui.Spacer(height=8)
                     ui.Label("Task policy: language + 10-hole visual state", style={"color": 0xFF9AA7B4})
+                    ui.Label("Motion: fixed-link UR10e + collision-aware RMPflow", style={"color": 0xFF9AA7B4})
                     ui.Label("Safety gate: Direct / Vision Refine / Spiral", style={"color": 0xFF9AA7B4})
                     ui.Label("Log: recordings/aero_drill_events.jsonl", style={"color": 0xFF9AA7B4})
 
     def _create_scene(self) -> None:
+        omni.timeline.get_timeline_interface().pause()
         context = omni.usd.get_context()
         context.new_stage()
         stage = context.get_stage()
@@ -107,13 +137,15 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             self._set_status,
         )
         self._centerlines_visible = True
+        self._frames_visible = True
         self._policy_label.text = f"Policy: {self._controller.policy.mode}"
         self._refresh_ui()
-        self._set_status("Scene ready | Select one hole or run the ten-hole batch")
+        self._set_status("Scene ready | Press Run to start physics and initialize UR10e")
 
     def _run_selected(self) -> None:
         if not self._require_controller():
             return
+        omni.timeline.get_timeline_interface().play()
         hole = HOLE_IDS[self._hole_combo.model.get_item_value_model().as_int]
         instruction = self._instruction.model.as_string or f"process {hole}"
         try:
@@ -127,6 +159,7 @@ class AeroDrillVLAExtension(omni.ext.IExt):
     def _run_sequence(self) -> None:
         if not self._require_controller():
             return
+        omni.timeline.get_timeline_interface().play()
         instruction = self._instruction.model.as_string or "process all pending DRPE holes in sequence"
         try:
             decision = self._controller.start_sequence(instruction)
@@ -153,6 +186,27 @@ class AeroDrillVLAExtension(omni.ext.IExt):
         set_centerlines_visible(stage, self._centerlines_visible)
         self._set_status(
             f"Centerline visualization {'enabled' if self._centerlines_visible else 'hidden'}"
+        )
+
+    def _toggle_frames(self) -> None:
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            return
+        self._frames_visible = not self._frames_visible
+        set_frames_visible(stage, self._frames_visible)
+        self._set_status(
+            f"Coordinate frames {'enabled' if self._frames_visible else 'hidden'}"
+        )
+
+    def _toggle_colliders(self) -> None:
+        self._colliders_visible = not self._colliders_visible
+        value = 2 if self._colliders_visible else 0
+        carb.settings.get_settings().set_int(
+            "/persistent/physics/visualizationDisplayColliders",
+            value,
+        )
+        self._set_status(
+            f"Physics colliders {'visible' if self._colliders_visible else 'hidden'}"
         )
 
     def _save_scene(self) -> None:
@@ -204,6 +258,21 @@ class AeroDrillVLAExtension(omni.ext.IExt):
             else "Last quality: --"
         )
         self._progress_label.text = f"Batch progress: {controller.completed_count} / 10"
+        self._robot_mode_label.text = f"Robot: {controller.robot_mode}"
+        self._tcp_pose_label.text = controller.tcp_pose_text
+        self._ik_label.text = f"IK / TCP tracking error: {controller.tcp_error_mm:.1f} mm"
+        self._collision_label.text = controller.collision_summary
+        active_frame = controller.active_hole if controller.active_hole != "--" else "none"
+        self._frame_label.text = (
+            f"Frames: W = UR Base B | TCP Z+ = drilling direction | "
+            f"active hole frame = {active_frame} (Z+ outward)"
+        )
+        for label, row in zip(self._joint_labels, controller.joint_rows()):
+            label.text = (
+                f"{row['label']:<12} {row['position_deg']:+7.2f} deg | "
+                f"{row['velocity_deg_s']:+6.2f} deg/s | "
+                f"[{row['lower_deg']:+.0f}, {row['upper_deg']:+.0f}]"
+            )
 
     def _set_status(self, message: str) -> None:
         if self._status_label:

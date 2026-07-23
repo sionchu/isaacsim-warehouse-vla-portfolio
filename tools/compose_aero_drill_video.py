@@ -66,13 +66,13 @@ def metric(draw: ImageDraw.ImageDraw, y: int, label: str, value: str, accent=Non
 def compose(raw: Image.Image, data: dict, index: int, fps: int) -> Image.Image:
     canvas = Image.new("RGB", (WIDTH, HEIGHT), COLORS["background"])
     draw = ImageDraw.Draw(canvas)
-    draw.text((20, 18), "AEROSPACE DRILLING VLA DIGITAL TWIN", font=font(28, True), fill=COLORS["white"])
+    draw.text((20, 18), "UR10e AEROSPACE DRILLING VLA DIGITAL TWIN", font=font(28, True), fill=COLORS["white"])
     draw.text((1260, 28), f"T+{index / fps:05.1f}s", font=font(17), fill=COLORS["muted"], anchor="ra")
 
     viewport = raw.convert("RGB").resize((VIEW_BOX[2] - VIEW_BOX[0], VIEW_BOX[3] - VIEW_BOX[1]), Image.Resampling.LANCZOS)
     canvas.paste(viewport, (VIEW_BOX[0], VIEW_BOX[1]))
     draw.rounded_rectangle(VIEW_BOX, radius=8, outline=COLORS["line"], width=2)
-    draw.text((32, 90), "ISAAC SIM | SYNTHETIC AIRCRAFT PANEL", font=font(14, True), fill=COLORS["white"])
+    draw.text((32, 90), "ISAAC SIM | OFFICIAL UR10e + SCALED DRPE PANEL", font=font(14, True), fill=COLORS["white"])
 
     draw.rounded_rectangle((PANEL_X, 76, 1262, 604), radius=10, fill=COLORS["panel"], outline=COLORS["line"])
     draw_hole_map(draw, data)
@@ -80,19 +80,29 @@ def compose(raw: Image.Image, data: dict, index: int, fps: int) -> Image.Image:
     metric(draw, 270, "ACTIVE HOLE", data["active_hole"], COLORS["orange"])
     metric(draw, 304, "STATE", data["state"], COLORS["cyan"])
     metric(draw, 338, "STRATEGY", data["strategy"])
-    metric(draw, 372, "ALIGNMENT", f"{data['position_error_mm']:.2f} mm")
-    metric(draw, 406, "NORMAL ERROR", f"{data['normal_error_deg']:.2f} deg")
+    metric(draw, 372, "TCP ERROR", f"{data.get('tcp_error_mm', 0.0):.1f} mm")
+    metric(draw, 406, "CLEARANCE", f"{data.get('clearance_mm', 0.0):+.1f} mm")
     metric(draw, 440, "AXIAL FORCE", f"{data['force_n']:.1f} N")
     metric(draw, 474, "SPINDLE", f"{data['spindle_rpm']} rpm")
     metric(draw, 508, "MATERIAL", data["material_stack"])
     metric(draw, 542, "PROGRESS", f"{data['completed_count']} / 10", COLORS["green"])
 
     draw.rounded_rectangle((18, 620, 1262, 702), radius=10, fill=COLORS["panel"], outline=COLORS["line"])
-    draw.text((34, 635), data["status"], font=font(18, True), fill=COLORS["white"])
+    draw.text((34, 632), data["status"], font=font(17, True), fill=COLORS["white"])
+    joint_text = "  ".join(
+        f"J{index + 1} {float(row['position_deg']):+.0f} deg"
+        for index, row in enumerate(data.get("joints", []))
+    )
     draw.text(
-        (34, 672),
-        f"Policy: {data['policy']}  |  VLA target selection + deterministic docking safety gate",
-        font=font(14),
+        (34, 661),
+        joint_text or "J1--  J2--  J3--  J4--  J5--  J6--",
+        font=font(13, True),
+        fill=COLORS["cyan"],
+    )
+    draw.text(
+        (34, 684),
+        f"Policy: {data['policy']} | UR10e fixed-link articulation | cuMotion collision-aware RMPflow",
+        font=font(12),
         fill=COLORS["muted"],
     )
     return canvas

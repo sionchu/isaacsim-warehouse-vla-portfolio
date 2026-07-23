@@ -27,6 +27,7 @@ def main() -> None:
         stage,
         ROOT / "models" / "aero_drill_vla.pt",
         ROOT / "recordings" / "aero_drill_smoke.jsonl",
+        enable_robot_motion=False,
     )
     assert controller.policy.mode == "trained aero VLA-lite"
     controller.cycle_speed = 10.0

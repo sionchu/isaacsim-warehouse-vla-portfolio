@@ -1,6 +1,8 @@
 param(
     [switch]$KeepFrames,
-    [switch]$CleanupOnly
+    [switch]$CleanupOnly,
+    [ValidateRange(1, 10)]
+    [int]$MaxHoles = 3
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -17,7 +19,7 @@ if (-not (Test-Path $isaacPython)) {
 }
 
 if (-not $CleanupOnly) {
-    & $isaacPython $recorder --output-dir $rawFrames --fps 15
+    & $isaacPython $recorder --output-dir $rawFrames --fps 15 --max-holes $MaxHoles
     if ($LASTEXITCODE -ne 0) {
         throw "Aero drill recording failed with exit code $LASTEXITCODE"
     }

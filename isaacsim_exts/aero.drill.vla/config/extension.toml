@@ -3,10 +3,10 @@ reloadable = true
 order = 0
 
 [package]
-version = "0.1.0"
+version = "0.2.0"
 category = "Robotics"
 title = "Aero Drill VLA Control"
-description = "DRPE drill-plate docking and aerospace drilling VLA portfolio cell."
+description = "UR10e DRPE drill-plate docking and aerospace drilling VLA portfolio cell."
 authors = ["Jeongeon Lee"]
 
 [dependencies]
@@ -14,6 +14,11 @@ authors = ["Jeongeon Lee"]
 "omni.usd" = {}
 "omni.timeline" = {}
 "isaacsim.core.api" = {}
+"isaacsim.core.experimental.objects" = {}
+"isaacsim.core.experimental.prims" = {}
+"isaacsim.core.experimental.utils" = {}
+"isaacsim.robot_motion.cumotion" = {}
+"isaacsim.storage.native" = {}
 
 [[python.module]]
 name = "aero_drill_vla"

@@ -16,22 +16,31 @@ cd C:\robotics-portfolio
 .\scripts\start_aero_drill.ps1
 ```
 
-The `Aero Drill VLA Control` panel supports a selected-hole cycle or a strict H01-H10 batch. The learned VLA-lite policy combines an English/Korean instruction with the 2 x 5 visual hole state. A deterministic safety gate then selects `DIRECT DOCK`, `VISION REFINE`, or `SPIRAL SEARCH` from the nominal position and normal errors.
+The `Aero Drill VLA Control` panel supports a selected-hole cycle or a strict H01-H10 batch. The robot is NVIDIA's official UR10e USD articulation with six revolute joints. NVIDIA cuMotion RMPflow converts the commanded TCP pose into fixed-link joint motion and tracks the collision-enabled aircraft cell. The learned VLA-lite policy combines an English/Korean instruction with the 2 x 5 visual hole state, while a deterministic safety gate selects `DIRECT DOCK`, `VISION REFINE`, or `SPIRAL SEARCH`.
+
+The UI exposes:
+
+- J1-J6 position, velocity, and joint limits;
+- world/base, TCP, active-hole, and per-link coordinate frames;
+- TCP tracking error and panel-normal clearance;
+- collision-world status and a viewport collider toggle;
+- process force, spindle, feed, quality, and H01-H10 progress.
 
 Train the aerospace policy or reproduce the portfolio video:
 
 ```powershell
 .\scripts\train_aero_vla.ps1
-.\scripts\record_aero_drill.ps1
+.\scripts\record_aero_drill.ps1 -MaxHoles 1
 ```
 
 The current checkpoint used 6,000 synthetic examples for 35 epochs and reached 95.1% accuracy on generated validation data. This is a synthetic task-selection benchmark, not aerospace process qualification.
+Use `-MaxHoles 10` to record the complete batch; the checked-in short clip records one validated H01 cycle to keep repository size and rendering time practical.
 
 [Watch the aerospace drilling trial](recordings/aero_drill_trial.mp4)
 
 ![Aerospace drilling VLA trial](recordings/aero_drill_trial_thumbnail.png)
 
-The synthetic cell takes public functional inspiration from SETI-TEC R eVo, Broetje RACe, and Electroimpact ADU-Bot systems. It does not contain OEM CAD or claim affiliation with those manufacturers. The current procedural cobot and force/RPM values are visual digital-twin surrogates; material removal and cutting-force validation remain future work. See [aerospace drilling implementation notes](docs/AERO_DRILL_VLA.md).
+The cell takes public functional inspiration from SETI-TEC R eVo, Broetje RACe, and Electroimpact ADU-Bot systems. It does not contain OEM CAD or claim affiliation with those manufacturers. The generic drilling-head geometry follows cuMotion forward kinematics at `tool0`; force/RPM/feed/quality values remain synthetic process telemetry. Material removal and cutting-force validation remain future work. See [aerospace drilling implementation notes](docs/AERO_DRILL_VLA.md).
 
 ## Warehouse demo architecture
 
@@ -132,7 +141,7 @@ models/warehouse_vla.pt           Trained checkpoint stored through Git LFS
 models/aero_drill_vla.pt          Trained aerospace checkpoint through Git LFS
 ros2_ws/src/portfolio_bringup/    Nav2 dispatcher, SLAM config, RViz, and launch files
 scenes/warehouse_mission.usda     Generated portable scene composition
-scenes/aero_drill_vla.usda        Generated synthetic aerospace drilling cell
+scenes/aero_drill_vla.usda        Generated cell referencing NVIDIA's official UR10e USD
 scripts/                          Reproducible build, launch, and training commands
 tests/                            Isaac integration smoke test
 ```
@@ -144,9 +153,11 @@ python -m compileall -q isaacsim_exts ml ros2_ws\src\portfolio_bringup tests
 C:\isaacsim\python.bat tests\isaac_warehouse_smoke.py
 C:\isaacsim\python.bat tests\isaac_aero_drill_smoke.py
 C:\isaacsim\python.bat tests\isaac_aero_extension_smoke.py
+C:\isaacsim\python.bat tests\isaac_aero_ur10e_motion_smoke.py
+C:\isaacsim\python.bat tests\isaac_aero_ur10e_mission_smoke.py
 ```
 
-The integration smoke tests exercise both trained policies and complete the warehouse and ten-hole aerospace state machines.
+The integration smoke tests exercise both trained policies, validate the official UR10e's six DOFs and collision world, converge to an H03 task-space target, execute H01 without a motion-timeout gate, and complete the ten-hole logical process order.
 
 ## Current MVP boundary
 
@@ -155,7 +166,9 @@ The integration smoke tests exercise both trained policies and complete the ware
 - SLAM uses Nova Carter's 3D lidar converted to a 2D laser scan. The displayed sensor is lidar, not automotive radar.
 - Real deployment still requires site mapping, safety PLC/E-stop integration, payload validation, and real sensor calibration.
 - Aerospace VLA is task-level hole selection only. It is not end-to-end robot or spindle control.
-- The aerospace cobot, drilling head, alignment residuals, force, RPM, feed, and quality score are synthetic portfolio surrogates.
+- The aerospace robot links, joints, limits, and link collisions come from NVIDIA's official UR10e asset. The generic drilling head is an FK-following visual TCP attachment rather than redistributed SETI-TEC CAD.
+- The cell contains collision-enabled robot links and 20 tracked static environment shapes. The generic drill-head mesh is not yet part of the cuMotion robot collision-sphere model.
+- Alignment residuals, force, RPM, feed, and quality score remain synthetic portfolio telemetry.
 - The DRPE docking task models nosepiece-to-bushing alignment; it does not yet remove material or validate hole quality.
 
 See [warehouse mission notes](docs/WAREHOUSE_MISSION.md), [aerospace drilling notes](docs/AERO_DRILL_VLA.md), [Windows setup](docs/SETUP_WINDOWS.md), [portfolio roadmap](docs/PORTFOLIO_PLAN.md), and [GitHub publishing](docs/GITHUB.md).

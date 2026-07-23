@@ -12,6 +12,8 @@ simulation_app = SimulationApp({"headless": True})
 import omni.ext  # noqa: E402
 import omni.kit.app  # noqa: E402
 import omni.usd  # noqa: E402
+from isaacsim.core.experimental.utils.stage import is_stage_loading  # noqa: E402
+from pxr import UsdPhysics  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,15 +23,37 @@ def main() -> None:
     extension_path = ROOT / "isaacsim_exts" / "aero.drill.vla"
     manager.add_path(str(extension_path), omni.ext.ExtensionPathType.DIRECT_PATH)
     manager.set_extension_enabled_immediate("aero.drill.vla", True)
-    for _ in range(20):
+    for _ in range(120):
         simulation_app.update()
+        if not is_stage_loading():
+            continue
     stage = omni.usd.get_context().get_stage()
     assert stage is not None
     assert stage.GetPrimAtPath("/World/AeroDrillVLA").IsValid()
+    assert stage.GetPrimAtPath("/World/AeroDrillVLA/UR10e/wrist_3_link").IsValid()
+    assert stage.GetPrimAtPath(
+        "/World/AeroDrillVLA/UR10e/joints/shoulder_pan_joint"
+    ).IsA(UsdPhysics.RevoluteJoint)
+    assert stage.GetPrimAtPath(
+        "/World/AeroDrillVLA/AeroDrillTool/TCP"
+    ).IsValid()
+    assert stage.GetPrimAtPath(
+        "/World/AeroDrillVLA/CoordinateFrames/UR_Base"
+    ).IsValid()
+    assert not stage.GetPrimAtPath("/World/AeroDrillVLA/Cobot/Link0").IsValid()
+    collision_count = sum(
+        1
+        for prim in stage.Traverse()
+        if prim.HasAPI(UsdPhysics.CollisionAPI)
+    )
+    assert collision_count >= 10
     result = {
         "status": "PASS",
         "extension": "aero.drill.vla",
         "scene_prim": "/World/AeroDrillVLA",
+        "robot": "official UR10e asset",
+        "revolute_joints": 6,
+        "collision_shapes": collision_count,
     }
     result_path = ROOT / "recordings" / "raw" / "aero_drill_extension_result.json"
     result_path.parent.mkdir(parents=True, exist_ok=True)
